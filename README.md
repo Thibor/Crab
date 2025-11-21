@@ -1,7 +1,7 @@
 # Crab
 
 <div align="center" style="padding-top: 50px">
-<img src="/Resources/stonechess.png" />
+<img src="/Resources/Crab.png" />
     <br>
     <br>
     <b><i>Uci chess engine 1600 elo.</i></b>
