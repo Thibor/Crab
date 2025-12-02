@@ -8,13 +8,16 @@
 #define S32 signed __int32
 #define S64 signed __int64
 #define U64 unsigned __int64
+//#define FALSE 0
+//#define TRUE 1
 #define NAME "Crab"
 #define VERSION "2025-10-13"
 #define DEFAULT_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 #define RAND_64 ((U64)rand() | (U64)rand() << 15 | (U64)rand() << 30 | (U64)rand() << 45 |((U64)rand() & 0xf) << 60 )
+//#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+//#define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
 enum PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PT_NB };
-
 typedef struct {
 	U64 castling[4];
 	U64 color[2];
@@ -53,9 +56,9 @@ typedef struct {
 	S64 timeLimit;
 	U64 nodes;
 	U64 nodesLimit;
-}SSearchInfo;
+}SearchInfo;
 
-SSearchInfo info;
+SearchInfo info;
 
 int materialVal[PT_NB] = { 100,320,330,500,900,0 };
 Stack stack[128];
@@ -92,13 +95,13 @@ static U64 South(const U64 bb) {
 	return bb >> 8;
 }
 
-static U64 NN(const U64 bb) {
+/*static U64 NN(const U64 bb) {
 	return bb << 16;
 }
 
 static U64 SS(const U64 bb) {
 	return bb >> 16;
-}
+}*/
 
 static U64 NW(const U64 bb) {
 	return North(West(bb));
@@ -116,7 +119,7 @@ static U64 SE(const U64 bb) {
 	return South(East(bb));
 }
 
-void Swap(U64* a, U64* b) {
+static void Swap(U64* a, U64* b) {
 	U64 temp = *a;
 	*a = *b;
 	*b = temp;
@@ -206,7 +209,7 @@ static void PrintBitboard(U64 bb) {
 	printf(t);
 }
 
-void PrintBoard(Position* pos) {
+static void PrintBoard(Position* pos) {
 	Position np = *pos;
 	if (np.flipped)
 		FlipPosition(&np);
@@ -271,9 +274,8 @@ static void generate_pawn_moves(Move* const movelist, int* num_moves, U64 to_mas
 			add_move(movelist, num_moves, to + offset, to, BISHOP);
 			add_move(movelist, num_moves, to + offset, to, KNIGHT);
 		}
-		else {
+		else
 			add_move(movelist, num_moves, to + offset, to, PT_NB);
-		}
 	}
 }
 
@@ -355,10 +357,8 @@ static void SetFen(Position* pos, char* fen) {
 		a = i;
 	}
 	++a;
-
 	int flipped = fen[a++] == 'w' ? 0 : 1;
-
-	for (i = a + 1, z = 0; i < n && z == 0; ++i) {
+	for (i = a + 1, z = 0; i < n && !z; ++i) {
 		switch (fen[i]) {
 		case 'K': pos->castling[0] = 1; break;
 		case 'Q': pos->castling[1] = 1; break;
@@ -370,17 +370,14 @@ static void SetFen(Position* pos, char* fen) {
 		a = i;
 	}
 	++a;
-
 	if (fen[a] != '-') {
 		const int sq = fen[a] - 'a' + 8 * (fen[a + 1] - '1');
 		pos->ep = 1ull << sq;
 	}
-
 	if (flipped)FlipPosition(pos);
 }
 
-static char* ParseToken(char* string, char* token)
-{
+static char* ParseToken(char* string, char* token){
 	while (*string == ' ')
 		string++;
 	while (*string != ' ' && *string != '\0')
@@ -421,7 +418,6 @@ static int MakeMove(Position* pos, const Move* move) {
 	pos->castling[1] &= !((from | to) & 0x11ULL);
 	pos->castling[2] &= !((from | to) & 0x9000000000000000ULL);
 	pos->castling[3] &= !((from | to) & 0x1100000000000000ULL);
-
 	FlipPosition(pos);
 	return !Attacked(pos, LSB(pos->color[1] & pos->pieces[KING]), 0);
 }
@@ -516,14 +512,18 @@ static int EvalPosition(Position* pos) {
 	score += Count(bbAttack0) - Count(bbAttack1);
 	bbStart0 = pos->color[0] & pos->pieces[KING];
 	bbStart1 = pos->color[1] & pos->pieces[KING];
-	bbAttack0 = (North(bbStart0) | NW(bbStart0) | NE(bbStart0) | NN(bbStart0)) & pos->color[0] & pos->pieces[PAWN];
-	bbAttack1 = (South(bbStart1) | SW(bbStart1) | SE(bbStart1) | SS(bbStart1)) & pos->color[1] & pos->pieces[PAWN];
+	bbAttack0 = North(bbStart0) | NW(bbStart0) | NE(bbStart0);
+	bbAttack1 = South(bbStart1) | SW(bbStart1) | SE(bbStart1);
+	bbAttack0 |= North(bbAttack0);
+	bbAttack1 |= South(bbAttack1);
+	bbAttack0 &= pos->color[0] & pos->pieces[PAWN];
+	bbAttack1 &= pos->color[1] & pos->pieces[PAWN];
 	score += Count(bbAttack0) - Count(bbAttack1);
 	return score;
 }
 
 static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, Stack* stack) {
-	if ((++info.nodes & 0xffff) == 0)
+	if (!(++info.nodes & 0xffff))
 		CheckUp();
 	if (info.stop)
 		return 0;
@@ -594,9 +594,6 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 }
 
 static Move SearchIteratively(Position* pos) {
-	info.stop = 0;
-	info.nodes = 0;
-	info.timeStart = GetTimeMs();
 	for (int depth = 1; depth <= info.depthLimit; ++depth) {
 		SearchAlpha(pos, -MATE_VALUE, MATE_VALUE, depth, 0, stack);
 		if (info.stop)
@@ -650,7 +647,6 @@ static void ParseGo(char* command) {
 	int binc = 0;
 	int movestogo = 32;
 	char* argument = NULL;
-	if (argument = strstr(command, "infinite")) {}
 	if (argument = strstr(command, "binc"))
 		binc = atoi(argument + 5);
 	if (argument = strstr(command, "winc"))
