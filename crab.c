@@ -1,5 +1,6 @@
 #include <stdio.h>
-#include <windows.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define MATE_VALUE (1 << 15)
 #define MAX_DEPTH 128
@@ -8,8 +9,8 @@
 #define S32 signed __int32
 #define S64 signed __int64
 #define U64 unsigned __int64
-//#define FALSE 0
-//#define TRUE 1
+#define FALSE 0
+#define TRUE 1
 #define NAME "Crab"
 #define VERSION "2025-10-13"
 #define DEFAULT_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -71,6 +72,7 @@ static U64 Flip(const U64 bb) {
 	return _byteswap_uint64(bb);
 }
 
+//least significant bit index
 static U64 LSB(const U64 bb) {
 	return _tzcnt_u64(bb);
 }
@@ -94,14 +96,6 @@ static U64 North(const U64 bb) {
 static U64 South(const U64 bb) {
 	return bb >> 8;
 }
-
-/*static U64 NN(const U64 bb) {
-	return bb << 16;
-}
-
-static U64 SS(const U64 bb) {
-	return bb >> 16;
-}*/
 
 static U64 NW(const U64 bb) {
 	return North(West(bb));
