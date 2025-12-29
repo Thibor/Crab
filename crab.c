@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define MATE 30000
 #define INF 32000
@@ -17,13 +18,13 @@
 enum Color { WHITE, BLACK, COLOR_NB };
 enum PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PT_NB };
 
-typedef struct {
+typedef struct{
 	U64 castling[4];
 	U64 color[2];
 	U64 pieces[6];
 	U64 ep;
 	int flipped;
-} Position;
+}Position;
 
 Position pos;
 
@@ -45,19 +46,36 @@ typedef struct {
 	U16 flag;
 }TT_Entry;
 
-typedef struct {
+typedef struct{
 	int stop;
 	int depthLimit;
 	S64 timeStart;
 	S64 timeLimit;
 	U64 nodes;
 	U64 nodesLimit;
-}SearchInfo;
+}SSearchInfo;
 
-SearchInfo info;
+SSearchInfo info;
 
-U64 ranksBB[8] = { 0xff << (8 * 0),0xff << (8 * 1),0xff << (8 * 2),0xff << (8 * 3),0xff << (8 * 4),0xff << (8 * 5),0xff << (8 * 6),0xff << (8 * 7)};
-U64 filesBB[8] = {0x0101010101010101ULL << 0,0x0101010101010101ULL << 1,0x0101010101010101ULL << 2,0x0101010101010101ULL << 3,0x0101010101010101ULL << 4,0x0101010101010101ULL << 5,0x0101010101010101ULL << 6,0x0101010101010101ULL << 7};
+U64 ranksBB[8] = {
+	0x00000000000000ffULL,
+	0x000000000000ff00ULL,
+	0x0000000000ff0000ULL,
+	0x00000000ff000000ULL, 
+	0x000000ff00000000ULL,
+	0x0000ff0000000000ULL,
+	0x00ff000000000000ULL,
+	0xff00000000000000ULL};
+
+U64 filesBB[8] = {
+	0x0101010101010101ULL,
+	0x0202020202020202ULL,
+	0x0404040404040404ULL,
+	0x0808080808080808ULL,
+	0x1010101010101010ULL,
+	0x2020202020202020ULL,
+	0x4040404040404040ULL,
+	0x8080808080808080ULL};
 
 int material[PT_NB] = { 100,320,330,500,900,0 };
 Stack stack[128];
@@ -181,53 +199,6 @@ static void FlipPosition(Position* pos) {
 	Swap(&pos->castling[0], &pos->castling[2]);
 	Swap(&pos->castling[1], &pos->castling[3]);
 	pos->flipped = !pos->flipped;
-}
-
-static void PrintBitboard(U64 bb) {
-	const char* s = "   +---+---+---+---+---+---+---+---+\n";
-	const char* t = "     A   B   C   D   E   F   G   H\n";
-	printf(t);
-	for (int r = 7; r >= 0; r--) {
-		printf(s);
-		printf(" %d |", r + 1);
-		for (int f = 0; f < 8; f++) {
-			int sq = r * 8 + f;
-			printf(" %c |", bb & 1ull << sq ? 'x' : ' ');
-		}
-		printf(" %d \n", r + 1);
-	}
-	printf(s);
-	printf(t);
-}
-
-static void PrintBoard(Position* pos) {
-	Position np = *pos;
-	if (np.flipped)
-		FlipPosition(&np);
-	const char* s = "   +---+---+---+---+---+---+---+---+\n";
-	const char* t = "     A   B   C   D   E   F   G   H\n";
-	printf(t);
-	for (int r = 7; r >= 0; r--) {
-		printf(s);
-		printf(" %d |", r + 1);
-		for (int f = 0; f < 8; f++) {
-			int sq = r * 8 + f;
-			int piece = PieceTypeOn(&np, sq);
-			if (np.color[0] & (1ull << sq))
-				printf(" %c |", "ANBRQK "[piece]);
-			else
-				printf(" %c |", "anbrqk "[piece]);
-		}
-		printf(" %d \n", r + 1);
-	}
-	printf(s);
-	printf(t);
-	char castling[5] = "KQkq";
-	for (int n = 0; n < 4; n++)
-		if (!np.castling[n])
-			castling[n] = '-';
-	printf("side     : %10s\n", pos->flipped ? "black" : "white");
-	printf("castling : %10s\n", castling);
 }
 
 static void CheckUp() {
@@ -549,11 +520,11 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 				stack[ply].move = move;
 				if (!ply)
 				{
-					printf("info depth %d", depth);
+					printf("info depth %d score ", depth);
 					if (abs(score) < MATE - MAX_DEPTH)
-						printf(" score cp %d", score);
+						printf("cp %d", score);
 					else
-						printf(" score mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
+						printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
 					printf(" time %lld", GetTimeMs() - info.timeStart);
 					printf(" nodes %lld pv %s", info.nodes, MoveToUci(stack[0].move, pos->flipped));
 					printf("\n");
@@ -568,7 +539,7 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 	return alpha;
 }
 
-static Move SearchIteratively(Position* pos) {
+static void SearchIteratively(Position* pos) {
 	for (int depth = 1; depth <= info.depthLimit; ++depth) {
 		SearchAlpha(pos, -MATE, MATE, depth, 0, stack);
 		if (info.stop)
@@ -577,7 +548,9 @@ static Move SearchIteratively(Position* pos) {
 			break;
 		}
 	}
-	return stack[0].move;
+	char* uci = MoveToUci(stack[0].move, pos->flipped);
+	printf("bestmove %s\n", uci);
+	fflush(stdout);
 }
 
 static void ParsePosition(char* ptr) {
@@ -642,6 +615,7 @@ static void ParseGo(char* command) {
 	int inc = pos.flipped ? binc : winc;
 	if (time)
 		info.timeLimit = min(time / movestogo + inc, time / 2);
+	SearchIteratively(&pos);
 }
 
 static void UciCommand(char* line) {
@@ -653,17 +627,10 @@ static void UciCommand(char* line) {
 		printf("id name %s\nuciok\n", NAME);
 		fflush(stdout);
 	}
-	else if (!strncmp(line, "go", 2)) {
+	else if (!strncmp(line, "go", 2))
 		ParseGo(line + 2);
-		Move best_move = SearchIteratively(&pos);
-		char* uci = MoveToUci(best_move, pos.flipped);
-		printf("bestmove %s\n", uci);
-		fflush(stdout);
-	}
-	else if (!strncmp(line, "position", 8)) {
+	else if (!strncmp(line, "position", 8))
 		ParsePosition(line + 8);
-	}
-	//else if (!strncmp(line, "print", 5))PrintBoard(&pos);
 	else if (!strncmp(line, "exit", 4))exit(0);
 }
 
