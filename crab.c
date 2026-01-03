@@ -53,9 +53,9 @@ typedef struct{
 	S64 timeLimit;
 	U64 nodes;
 	U64 nodesLimit;
-}SSearchInfo;
+}SearchInfo;
 
-SSearchInfo info;
+SearchInfo info;
 
 U64 ranksBB[8] = {
 	0x00000000000000ffULL,
