@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MATE 30000
 #define INF 32000
-#define MAX_DEPTH 128
+#define MATE 31000
+#define MAX_PLY 128
 #define U16 unsigned __int16
 #define S32 signed __int32
 #define S64 signed __int64
@@ -18,12 +18,12 @@
 enum Color { WHITE, BLACK, COLOR_NB };
 enum PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PT_NB };
 
-typedef struct{
-	U64 castling[4];
+typedef struct {
+	int flipped;
+	int castling[4];
 	U64 color[2];
 	U64 pieces[6];
 	U64 ep;
-	int flipped;
 }Position;
 
 Position pos;
@@ -46,7 +46,7 @@ typedef struct {
 	U16 flag;
 }TT_Entry;
 
-typedef struct{
+typedef struct {
 	int stop;
 	int depthLimit;
 	S64 timeStart;
@@ -61,11 +61,11 @@ U64 ranksBB[8] = {
 	0x00000000000000ffULL,
 	0x000000000000ff00ULL,
 	0x0000000000ff0000ULL,
-	0x00000000ff000000ULL, 
+	0x00000000ff000000ULL,
 	0x000000ff00000000ULL,
 	0x0000ff0000000000ULL,
 	0x00ff000000000000ULL,
-	0xff00000000000000ULL};
+	0xff00000000000000ULL };
 
 U64 filesBB[8] = {
 	0x0101010101010101ULL,
@@ -75,10 +75,13 @@ U64 filesBB[8] = {
 	0x1010101010101010ULL,
 	0x2020202020202020ULL,
 	0x4040404040404040ULL,
-	0x8080808080808080ULL};
+	0x8080808080808080ULL };
+
+
+U64 bbShield = 0x000000000000e700ULL;
 
 int material[PT_NB] = { 100,320,330,500,900,0 };
-Stack stack[128];
+Stack stack[MAX_PLY];
 
 static U64 GetTimeMs() {
 	return GetTickCount64();
@@ -334,7 +337,7 @@ static void SetFen(Position* pos, char* fen) {
 	if (flipped)FlipPosition(pos);
 }
 
-static char* ParseToken(char* string, char* token){
+static char* ParseToken(char* string, char* token) {
 	while (*string == ' ')
 		string++;
 	while (*string != ' ' && *string != '\0')
@@ -380,7 +383,7 @@ static int MakeMove(Position* pos, const Move* move) {
 }
 
 static char* MoveToUci(Move move, int flip) {
-	static char str[6] = {0};
+	static char str[6] = { 0 };
 	str[0] = 'a' + (move.from % 8);
 	str[1] = '1' + (flip ? (7 - move.from / 8) : (move.from / 8));
 	str[2] = 'a' + (move.to % 8);
@@ -476,9 +479,9 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 	if (info.stop)
 		return 0;
 	const int static_eval = EvalPosition(pos);
-	if (ply > 127)
+	if (ply >= MAX_PLY)
 		return static_eval;
-	const auto in_check = Attacked(pos, (int)LSB(pos->color[0] & pos->pieces[KING]), 1);
+	const U64 in_check = Attacked(pos, (int)LSB(pos->color[0] & pos->pieces[KING]), 1);
 	if (in_check)
 		depth = max(1, depth + 1);
 	int in_qsearch = depth <= 0;
@@ -521,7 +524,7 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 				if (!ply)
 				{
 					printf("info depth %d score ", depth);
-					if (abs(score) < MATE - MAX_DEPTH)
+					if (abs(score) < MATE - MAX_PLY)
 						printf("cp %d", score);
 					else
 						printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
@@ -544,9 +547,8 @@ static void SearchIteratively(Position* pos) {
 		SearchAlpha(pos, -MATE, MATE, depth, 0, stack);
 		if (info.stop)
 			break;
-		if (info.timeLimit && GetTimeMs() - info.timeStart > info.timeLimit / 2) {
+		if (info.timeLimit && GetTimeMs() - info.timeStart > info.timeLimit / 2)
 			break;
-		}
 	}
 	char* uci = MoveToUci(stack[0].move, pos->flipped);
 	printf("bestmove %s\n", uci);
@@ -585,7 +587,7 @@ static void ParsePosition(char* ptr) {
 static void ParseGo(char* command) {
 	info.stop = FALSE;
 	info.nodes = 0;
-	info.depthLimit = 64;
+	info.depthLimit = MAX_PLY;
 	info.nodesLimit = 0;
 	info.timeLimit = 0;
 	info.timeStart = GetTimeMs();
@@ -631,7 +633,8 @@ static void UciCommand(char* line) {
 		ParseGo(line + 2);
 	else if (!strncmp(line, "position", 8))
 		ParsePosition(line + 8);
-	else if (!strncmp(line, "exit", 4))exit(0);
+	else if (!strncmp(line, "exit", 4))
+		exit(0);
 }
 
 static void UciLoop() {
