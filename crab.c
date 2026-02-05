@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INF 32000
-#define MATE 31000
-#define MAX_PLY 128
+#define INF 32001
+#define MATE 32000
+#define MAX_PLY 64
 #define U16 unsigned __int16
 #define S32 signed __int32
 #define S64 signed __int64
@@ -204,9 +204,14 @@ static void FlipPosition(Position* pos) {
 	pos->flipped = !pos->flipped;
 }
 
-static void CheckUp() {
-	if ((info.timeLimit && GetTimeMs() - info.timeStart > info.timeLimit) || (info.nodesLimit && info.nodes > info.nodesLimit))
-		info.stop = 1;
+static int CheckUp() {
+	if ((++info.nodes & 0xffff) == 0) {
+		if (info.timeLimit && GetTimeMs() - info.timeStart > info.timeLimit)
+			info.stop = 1;
+		if (info.nodesLimit && info.nodes > info.nodesLimit)
+			info.stop = 1;
+	}
+	return info.stop;
 }
 
 static U64 Attacked(Position* pos, int sq, int them) {
@@ -229,7 +234,7 @@ static void add_move(Move* const movelist, int* num_moves, const int from, const
 	m->promo = promo;
 }
 
-static void generate_pawn_moves(Move* const movelist, int* num_moves, U64 to_mask, const int offset) {
+static void GeneratePawnMoves(Move* const movelist, int* num_moves, U64 to_mask, const int offset) {
 	while (to_mask) {
 		const int to = (int)LSB(to_mask);
 		to_mask &= to_mask - 1;
@@ -244,7 +249,7 @@ static void generate_pawn_moves(Move* const movelist, int* num_moves, U64 to_mas
 	}
 }
 
-static void generate_piece_moves(Move* const movelist, int* num_moves, const Position* pos, const int piece, const U64 to_mask, U64(*func)(int, U64)) {
+static void GeneratePieceMoves(Move* const movelist, int* num_moves, const Position* pos, const int piece, const U64 to_mask, U64(*func)(int, U64)) {
 	U64 copy = pos->color[0] & pos->pieces[piece];
 	while (copy) {
 		const int fr = LSB(copy);
@@ -264,18 +269,18 @@ static int MoveGen(const Position* pos, Move* const movelist, int only_captures)
 	const U64 to_mask = only_captures ? pos->color[1] : ~pos->color[0];
 	const U64 pawns = pos->color[0] & pos->pieces[PAWN];
 	U64 maskTo = North(pawns) & ~all & (only_captures ? 0xFF00000000000000ULL : 0xFFFFFFFFFFFF0000ULL);
-	generate_pawn_moves(movelist, &num_moves, maskTo, -8);
+	GeneratePawnMoves(movelist, &num_moves, maskTo, -8);
 	if (!only_captures) {
-		generate_pawn_moves(movelist, &num_moves, North(North(pawns & 0xFF00ULL) & ~all) & ~all, -16);
+		GeneratePawnMoves(movelist, &num_moves, North(North(pawns & 0xFF00ULL) & ~all) & ~all, -16);
 	}
-	generate_pawn_moves(movelist, &num_moves, NW(pawns) & (pos->color[1] | pos->ep), -7);
-	generate_pawn_moves(movelist, &num_moves, NE(pawns) & (pos->color[1] | pos->ep), -9);
-	generate_piece_moves(movelist, &num_moves, pos, KNIGHT, to_mask, KnightAttack);
-	generate_piece_moves(movelist, &num_moves, pos, BISHOP, to_mask, BishopAttack);
-	generate_piece_moves(movelist, &num_moves, pos, QUEEN, to_mask, BishopAttack);
-	generate_piece_moves(movelist, &num_moves, pos, ROOK, to_mask, RookAttack);
-	generate_piece_moves(movelist, &num_moves, pos, QUEEN, to_mask, RookAttack);
-	generate_piece_moves(movelist, &num_moves, pos, KING, to_mask, KingAttack);
+	GeneratePawnMoves(movelist, &num_moves, NW(pawns) & (pos->color[1] | pos->ep), -7);
+	GeneratePawnMoves(movelist, &num_moves, NE(pawns) & (pos->color[1] | pos->ep), -9);
+	GeneratePieceMoves(movelist, &num_moves, pos, KNIGHT, to_mask, KnightAttack);
+	GeneratePieceMoves(movelist, &num_moves, pos, BISHOP, to_mask, BishopAttack);
+	GeneratePieceMoves(movelist, &num_moves, pos, QUEEN, to_mask, BishopAttack);
+	GeneratePieceMoves(movelist, &num_moves, pos, ROOK, to_mask, RookAttack);
+	GeneratePieceMoves(movelist, &num_moves, pos, QUEEN, to_mask, RookAttack);
+	GeneratePieceMoves(movelist, &num_moves, pos, KING, to_mask, KingAttack);
 	if (!only_captures && pos->castling[0] && !(all & 0x60ULL) && !Attacked(pos, 4, 1) && !Attacked(pos, 5, 1)) {
 		add_move(movelist, &num_moves, 4, 6, PT_NB);
 	}
@@ -358,9 +363,8 @@ static int MakeMove(Position* pos, const Move* move) {
 		pos->pieces[PAWN] ^= to >> 8;
 	}
 	pos->ep = 0x0ULL;
-	if (piece == PAWN && move->to - move->from == 16) {
+	if (piece == PAWN && move->to - move->from == 16)
 		pos->ep = to >> 8;
-	}
 	if (captured != PT_NB) {
 		pos->color[1] ^= to;
 		pos->pieces[captured] ^= to;
@@ -474,9 +478,7 @@ static int EvalPosition(Position* pos) {
 }
 
 static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, Stack* stack) {
-	if (!(++info.nodes & 0xffff))
-		CheckUp();
-	if (info.stop)
+	if (CheckUp())
 		return 0;
 	const int static_eval = EvalPosition(pos);
 	if (ply >= MAX_PLY)
@@ -485,12 +487,11 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 	if (in_check)
 		depth = max(1, depth + 1);
 	int in_qsearch = depth <= 0;
-	if (in_qsearch && static_eval > alpha) {
-		if (static_eval >= beta)
-			return beta;
+	if (in_qsearch && alpha < static_eval) {
 		alpha = static_eval;
+		if (alpha >= beta)
+			return beta;
 	}
-	Move best_move = { 0 };
 	int best_score = -INF;
 	Move moves[256];
 	const int num_moves = MoveGen(pos, moves, in_qsearch);
@@ -515,27 +516,24 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 		int score = -SearchAlpha(&npos, -beta, -alpha, depth - 1, ply + 1, stack);
 		if (info.stop)
 			return 0;
-		if (score > best_score) {
+		if (score > best_score)
 			best_score = score;
-			best_move = move;
-			if (score > alpha) {
-				alpha = score;
-				stack[ply].move = move;
-				if (!ply)
-				{
-					printf("info depth %d score ", depth);
-					if (abs(score) < MATE - MAX_PLY)
-						printf("cp %d", score);
-					else
-						printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
-					printf(" time %lld", GetTimeMs() - info.timeStart);
-					printf(" nodes %lld pv %s", info.nodes, MoveToUci(stack[0].move, pos->flipped));
-					printf("\n");
-				}
+		if (alpha < score) {
+			alpha = score;
+			stack[ply].move = move;
+			if (!ply){
+				printf("info depth %d score ", depth);
+				if (abs(score) < MATE - MAX_PLY)
+					printf("cp %d", score);
+				else
+					printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
+				printf(" time %lld", GetTimeMs() - info.timeStart);
+				printf(" nodes %lld pv %s", info.nodes, MoveToUci(stack[0].move, pos->flipped));
+				printf("\n");
 			}
+			if (alpha >= beta)
+				break;
 		}
-		if (alpha >= beta)
-			break;
 	}
 	if (best_score == -INF)
 		return in_qsearch ? alpha : in_check ? ply - MATE : 0;
