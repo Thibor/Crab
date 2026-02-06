@@ -20,7 +20,7 @@ enum PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PT_NB };
 
 typedef struct {
 	int flipped;
-	int castling[4];
+	U64 castling[4];
 	U64 color[2];
 	U64 pieces[6];
 	U64 ep;
@@ -351,7 +351,23 @@ static char* ParseToken(char* string, char* token) {
 	return string;
 }
 
+static char* MoveToUci(Move move, int flip) {
+	static char str[6] = { 0 };
+	str[0] = 'a' + (move.from % 8);
+	str[1] = '1' + (flip ? (7 - move.from / 8) : (move.from / 8));
+	str[2] = 'a' + (move.to % 8);
+	str[3] = '1' + (flip ? (7 - move.to / 8) : (move.to / 8));
+	str[4] = "\0nbrq\0\0"[move.promo];
+	return str;
+}
+
 static int MakeMove(Position* pos, const Move* move) {
+	char castling[5] = "KQkq";
+	for (int n = 0; n < 4; n++)
+		if (!pos->castling[n])
+			castling[n] = '-';
+	printf("%s %s\n", MoveToUci(*move, pos->flipped), castling);
+
 	const int piece = PieceTypeOn(pos, move->from);
 	const int captured = PieceTypeOn(pos, move->to);
 	const U64 to = 1ULL << move->to;
@@ -383,17 +399,8 @@ static int MakeMove(Position* pos, const Move* move) {
 	pos->castling[2] &= !((from | to) & 0x9000000000000000ULL);
 	pos->castling[3] &= !((from | to) & 0x1100000000000000ULL);
 	FlipPosition(pos);
-	return !Attacked(pos, LSB(pos->color[1] & pos->pieces[KING]), 0);
-}
 
-static char* MoveToUci(Move move, int flip) {
-	static char str[6] = { 0 };
-	str[0] = 'a' + (move.from % 8);
-	str[1] = '1' + (flip ? (7 - move.from / 8) : (move.from / 8));
-	str[2] = 'a' + (move.to % 8);
-	str[3] = '1' + (flip ? (7 - move.to / 8) : (move.to / 8));
-	str[4] = "\0nbrq\0\0"[move.promo];
-	return str;
+	return !Attacked(pos, LSB(pos->color[1] & pos->pieces[KING]), 0);
 }
 
 static Move UciToMove(char* s, int flip) {
@@ -642,6 +649,8 @@ static void UciLoop() {
 }
 
 int main(const int argc, const char** argv) {
+	//UciCommand("position startpos moves d2d4 g8f6 c2c4 e7e6 g1f3 b7b6 e2e3 d7d5 b1c3 f8d6 f1e2 c8b7 c4d5 e6d5 e1g1 a7a6 c1d2 b8c6 d1b3 d8d7 g1h1 d7f5 h2h3 a8d8 g2g4 f5e6 f3g5 e6d7 e2d3 h7h5 d3f5 d7e7 g4h5 h8h5 f1g1 g7g6 f5d3 e7d7 d3f1 c6d4 e3d4 b7c6 b3d1 d7f5 d1f3 f5f3 g5f3 f6e4 d2e3");
+	//UciCommand("go movetime 3000");
 	printf("%s %s\n", NAME, VERSION);
 	SetFen(&pos, START_FEN);
 	UciLoop();
