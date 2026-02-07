@@ -362,12 +362,6 @@ static char* MoveToUci(Move move, int flip) {
 }
 
 static int MakeMove(Position* pos, const Move* move) {
-	char castling[5] = "KQkq";
-	for (int n = 0; n < 4; n++)
-		if (!pos->castling[n])
-			castling[n] = '-';
-	printf("%s %s\n", MoveToUci(*move, pos->flipped), castling);
-
 	const int piece = PieceTypeOn(pos, move->from);
 	const int captured = PieceTypeOn(pos, move->to);
 	const U64 to = 1ULL << move->to;
