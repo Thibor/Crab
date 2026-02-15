@@ -49,8 +49,8 @@ typedef struct {
 typedef struct {
 	int stop;
 	int depthLimit;
-	S64 timeStart;
-	S64 timeLimit;
+	U64 timeStart;
+	U64 timeLimit;
 	U64 nodes;
 	U64 nodesLimit;
 }SearchInfo;
@@ -207,9 +207,9 @@ static void FlipPosition(Position* pos) {
 static int CheckUp() {
 	if ((++info.nodes & 0xffff) == 0) {
 		if (info.timeLimit && GetTimeMs() - info.timeStart > info.timeLimit)
-			info.stop = 1;
+			info.stop = TRUE;
 		if (info.nodesLimit && info.nodes > info.nodesLimit)
-			info.stop = 1;
+			info.stop = TRUE;
 	}
 	return info.stop;
 }
@@ -624,6 +624,7 @@ static void UciCommand(char* line) {
 		printf("readyok\n");
 		fflush(stdout);
 	}
+	else if (strncmp(line, "ucinewgame", 10) == 0) {}
 	else if (!strncmp(line, "uci", 3)) {
 		printf("id name %s\nuciok\n", NAME);
 		fflush(stdout);
@@ -632,7 +633,7 @@ static void UciCommand(char* line) {
 		ParseGo(line + 2);
 	else if (!strncmp(line, "position", 8))
 		ParsePosition(line + 8);
-	else if (!strncmp(line, "exit", 4))
+	else if (!strncmp(line, "quit", 4))
 		exit(0);
 }
 
@@ -643,8 +644,6 @@ static void UciLoop() {
 }
 
 int main(const int argc, const char** argv) {
-	//UciCommand("position startpos moves d2d4 g8f6 c2c4 e7e6 g1f3 b7b6 e2e3 d7d5 b1c3 f8d6 f1e2 c8b7 c4d5 e6d5 e1g1 a7a6 c1d2 b8c6 d1b3 d8d7 g1h1 d7f5 h2h3 a8d8 g2g4 f5e6 f3g5 e6d7 e2d3 h7h5 d3f5 d7e7 g4h5 h8h5 f1g1 g7g6 f5d3 e7d7 d3f1 c6d4 e3d4 b7c6 b3d1 d7f5 d1f3 f5f3 g5f3 f6e4 d2e3");
-	//UciCommand("go movetime 3000");
 	printf("%s %s\n", NAME, VERSION);
 	SetFen(&pos, START_FEN);
 	UciLoop();
