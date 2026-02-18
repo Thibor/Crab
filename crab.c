@@ -26,8 +26,6 @@ typedef struct {
 	U64 ep;
 }Position;
 
-Position pos;
-
 typedef struct {
 	int from;
 	int to;
@@ -554,7 +552,7 @@ static void SearchIteratively(Position* pos) {
 	fflush(stdout);
 }
 
-static void ParsePosition(char* ptr) {
+static void ParsePosition(Position* pos,char* ptr) {
 	char token[80], fen[80];
 	ptr = ParseToken(ptr, token);
 	if (strcmp(token, "fen") == 0) {
@@ -566,24 +564,24 @@ static void ParsePosition(char* ptr) {
 			strcat(fen, token);
 			strcat(fen, " ");
 		}
-		SetFen(&pos, fen);
+		SetFen(pos, fen);
 	}
 	else {
 		ptr = ParseToken(ptr, token);
-		SetFen(&pos, START_FEN);
+		SetFen(pos, START_FEN);
 	}
 	if (strcmp(token, "moves") == 0)
 		while (1) {
 			ptr = ParseToken(ptr, token);
 			if (*token == '\0')
 				break;
-			Move m = UciToMove(token, pos.flipped);
-			if (!MakeMove(&pos, &m))
+			Move m = UciToMove(token, pos->flipped);
+			if (!MakeMove(pos, &m))
 				printf("Illegal move (%s).\n", token);
 		}
 }
 
-static void ParseGo(char* command) {
+static void ParseGo(Position* pos,char* command) {
 	info.stop = FALSE;
 	info.nodes = 0;
 	info.depthLimit = MAX_PLY;
@@ -612,14 +610,14 @@ static void ParseGo(char* command) {
 		info.depthLimit = atoi(argument + 6);
 	if (argument = strstr(command, "nodes"))
 		info.nodesLimit = atoi(argument + 5);
-	int time = pos.flipped ? btime : wtime;
-	int inc = pos.flipped ? binc : winc;
+	int time = pos->flipped ? btime : wtime;
+	int inc = pos->flipped ? binc : winc;
 	if (time)
 		info.timeLimit = min(time / movestogo + inc, time / 2);
-	SearchIteratively(&pos);
+	SearchIteratively(pos);
 }
 
-static void UciCommand(char* line) {
+static void UciCommand(Position* pos,char* line) {
 	if (!strncmp(line, "isready", 7)) {
 		printf("readyok\n");
 		fflush(stdout);
@@ -630,21 +628,22 @@ static void UciCommand(char* line) {
 		fflush(stdout);
 	}
 	else if (!strncmp(line, "go", 2))
-		ParseGo(line + 2);
+		ParseGo(pos,line + 2);
 	else if (!strncmp(line, "position", 8))
-		ParsePosition(line + 8);
+		ParsePosition(pos,line + 8);
 	else if (!strncmp(line, "quit", 4))
 		exit(0);
 }
 
-static void UciLoop() {
+static void UciLoop(Position* pos) {
 	char line[4000];
 	while (fgets(line, sizeof(line), stdin))
-		UciCommand(line);
+		UciCommand(pos,line);
 }
 
 int main(const int argc, const char** argv) {
+	Position pos;
 	printf("%s %s\n", NAME, VERSION);
 	SetFen(&pos, START_FEN);
-	UciLoop();
+	UciLoop(&pos);
 }
