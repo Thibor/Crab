@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INF 32001
 #define MATE 32000
 #define MAX_PLY 64
 #define U16 unsigned __int16
@@ -53,9 +52,7 @@ typedef struct {
 	U64 nodesLimit;
 }SearchInfo;
 
-SearchInfo info;
-
-U64 ranksBB[8] = {
+U64 bbRanks[8] = {
 	0x00000000000000ffULL,
 	0x000000000000ff00ULL,
 	0x0000000000ff0000ULL,
@@ -65,7 +62,7 @@ U64 ranksBB[8] = {
 	0x00ff000000000000ULL,
 	0xff00000000000000ULL };
 
-U64 filesBB[8] = {
+U64 bbFiles[8] = {
 	0x0101010101010101ULL,
 	0x0202020202020202ULL,
 	0x0404040404040404ULL,
@@ -75,11 +72,9 @@ U64 filesBB[8] = {
 	0x4040404040404040ULL,
 	0x8080808080808080ULL };
 
-
-U64 bbShield = 0x000000000000e700ULL;
-
 int material[PT_NB] = { 100,320,330,500,900,0 };
 Stack stack[MAX_PLY];
+SearchInfo info;
 
 static U64 GetTimeMs() {
 	return GetTickCount64();
@@ -94,6 +89,7 @@ static U64 LSB(const U64 bb) {
 	return _tzcnt_u64(bb);
 }
 
+//count set bits on a bitboard
 static U64 Count(const U64 bb) {
 	return _mm_popcnt_u64(bb);
 }
@@ -334,7 +330,7 @@ static void SetFen(Position* pos, char* fen) {
 		}
 	}
 	if (fen[i] != '-') {
-		const int sq = fen[i] - 'a' + 8 * (fen[++i] - '1');
+		const int sq = (fen[i] - 'a') + 8 * (fen[i + 1] - '1');
 		pos->ep = 1ull << sq;
 	}
 	if (flipped)FlipPosition(pos);
@@ -386,10 +382,10 @@ static int MakeMove(Position* pos, const Move* move) {
 		pos->pieces[PAWN] ^= to;
 		pos->pieces[move->promo] ^= to;
 	}
-	pos->castling[0] &= !((from | to) & 0x90ULL);
-	pos->castling[1] &= !((from | to) & 0x11ULL);
-	pos->castling[2] &= !((from | to) & 0x9000000000000000ULL);
-	pos->castling[3] &= !((from | to) & 0x1100000000000000ULL);
+	pos->castling[0] &= ((from | to) & 0x90ULL) == 0;
+	pos->castling[1] &= ((from | to) & 0x11ULL) == 0;
+	pos->castling[2] &= ((from | to) & 0x9000000000000000ULL) == 0;
+	pos->castling[3] &= ((from | to) & 0x1100000000000000ULL) == 0;
 	FlipPosition(pos);
 
 	return !Attacked(pos, LSB(pos->color[1] & pos->pieces[KING]), 0);
@@ -464,12 +460,12 @@ static int EvalPosition(Position* pos) {
 		bbAttack0 = RookAttackBB(bbStart0, bbBlockers) & ~bbControl1;
 		score += Count(bbAttack0);
 		bbStart0 = pos->color[0] & pos->pieces[KING];
-		U64 file0 = filesBB[LSB(bbStart0) % 8];
+		U64 file0 = bbFiles[LSB(bbStart0) % 8];
 		file0 |= East(file0) | West(file0);
-		bbAttack0 = file0 & (ranksBB[1] | ranksBB[2]) & ~(filesBB[3] | filesBB[4]);
+		bbAttack0 = file0 & (bbRanks[1] | bbRanks[2]) & ~(bbFiles[3] | bbFiles[4]);
 		bbAttack0 &= (pos->color[0] & pos->pieces[PAWN]);
 		score += Count(bbAttack0);
-		score += Count(bbAttack0 & ranksBB[1]);
+		score += Count(bbAttack0 & bbRanks[1]);
 		FlipPosition(pos);
 		score = -score;
 	}
@@ -491,7 +487,7 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 		if (alpha >= beta)
 			return beta;
 	}
-	int best_score = -INF;
+	int legalMoves = 0;
 	Move moves[256];
 	const int num_moves = MoveGen(pos, moves, in_qsearch);
 	int move_scores[256];
@@ -515,12 +511,11 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 		int score = -SearchAlpha(&npos, -beta, -alpha, depth - 1, ply + 1, stack);
 		if (info.stop)
 			return 0;
-		if (score > best_score)
-			best_score = score;
+		legalMoves++;
 		if (alpha < score) {
 			alpha = score;
 			stack[ply].move = move;
-			if (!ply){
+			if (!ply) {
 				printf("info depth %d score ", depth);
 				if (abs(score) < MATE - MAX_PLY)
 					printf("cp %d", score);
@@ -534,8 +529,8 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 				break;
 		}
 	}
-	if (best_score == -INF)
-		return in_qsearch ? alpha : in_check ? ply - MATE : 0;
+	if (!legalMoves && !in_qsearch)
+		return in_check ? ply - MATE : 0;
 	return alpha;
 }
 
@@ -552,7 +547,7 @@ static void SearchIteratively(Position* pos) {
 	fflush(stdout);
 }
 
-static void ParsePosition(Position* pos,char* ptr) {
+static void ParsePosition(Position* pos, char* ptr) {
 	char token[80], fen[80];
 	ptr = ParseToken(ptr, token);
 	if (strcmp(token, "fen") == 0) {
@@ -576,12 +571,11 @@ static void ParsePosition(Position* pos,char* ptr) {
 			if (*token == '\0')
 				break;
 			Move m = UciToMove(token, pos->flipped);
-			if (!MakeMove(pos, &m))
-				printf("Illegal move (%s).\n", token);
+			MakeMove(pos, &m);
 		}
 }
 
-static void ParseGo(Position* pos,char* command) {
+static void ParseGo(Position* pos, char* command) {
 	info.stop = FALSE;
 	info.nodes = 0;
 	info.depthLimit = MAX_PLY;
@@ -617,28 +611,26 @@ static void ParseGo(Position* pos,char* command) {
 	SearchIteratively(pos);
 }
 
-static void UciCommand(Position* pos,char* line) {
-	if (!strncmp(line, "isready", 7)) {
-		printf("readyok\n");
-		fflush(stdout);
-	}
-	else if (strncmp(line, "ucinewgame", 10) == 0) {}
+static void UciCommand(Position* pos, char* line) {
+
+	if (strncmp(line, "ucinewgame", 10) == 0) {}
 	else if (!strncmp(line, "uci", 3)) {
 		printf("id name %s\nuciok\n", NAME);
 		fflush(stdout);
 	}
-	else if (!strncmp(line, "go", 2))
-		ParseGo(pos,line + 2);
-	else if (!strncmp(line, "position", 8))
-		ParsePosition(pos,line + 8);
-	else if (!strncmp(line, "quit", 4))
-		exit(0);
+	if (!strncmp(line, "isready", 7)) {
+		printf("readyok\n");
+		fflush(stdout);
+	}
+	else if (!strncmp(line, "go", 2))ParseGo(pos, line + 2);
+	else if (!strncmp(line, "position", 8))ParsePosition(pos, line + 8);
+	else if (!strncmp(line, "quit", 4))exit(0);
 }
 
 static void UciLoop(Position* pos) {
 	char line[4000];
 	while (fgets(line, sizeof(line), stdin))
-		UciCommand(pos,line);
+		UciCommand(pos, line);
 }
 
 int main(const int argc, const char** argv) {
