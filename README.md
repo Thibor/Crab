@@ -14,6 +14,12 @@
     <img src="https://img.shields.io/github/last-commit/Thibor/Crab?color=critical&style=for-the-badge">
 </div>
 
+FIDE-rules-compliant chess engine
+
 ## Features
 
-- board: bitboard
+- Single file
+- Board: bitboard
+- En passant
+- Underpromotions (knight, bishop, rook)
+- Stalemate and checkmate reported correctly to the GUI
