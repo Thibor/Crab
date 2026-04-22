@@ -36,14 +36,6 @@ typedef struct {
 } Stack;
 
 typedef struct {
-	U8 depth;
-	U8 flag;
-	S16 score;
-	U64 key;
-	Move move;
-}TT_Entry;
-
-typedef struct {
 	U8 stop;
 	U8 depthLimit;
 	U64 timeStart;
