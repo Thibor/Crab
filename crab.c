@@ -68,53 +68,57 @@ int material[7] = { 100,320,330,500,900,0,0 };
 Stack stack[MAX_PLY];
 SearchInfo info;
 
-static U64 GetTimeMs() {
+inline static U64 GetTimeMs() {
 	return GetTickCount64();
 }
 
-static U64 FlipBitboard(const U64 bb) {
+inline static int Center(int rank, int file) {
+	return -abs(rank * 2 - 7) / 2 - abs(file * 2 - 7) / 2;
+}
+
+inline static U64 FlipBitboard(const U64 bb) {
 	return _byteswap_uint64(bb);
 }
 
 //Least Significant Bit index
-static U64 LSB(const U64 bb) {
+inline static U64 LSB(const U64 bb) {
 	return _tzcnt_u64(bb);
 }
 
 //Count set bits on a bitboard
-static U64 Count(const U64 bb) {
+inline static U64 Count(const U64 bb) {
 	return _mm_popcnt_u64(bb);
 }
 
-static U64 East(const U64 bb) {
+inline static U64 East(const U64 bb) {
 	return (bb << 1) & ~0x0101010101010101ULL;
 }
 
-static U64 West(const U64 bb) {
+inline static U64 West(const U64 bb) {
 	return (bb >> 1) & ~0x8080808080808080ULL;
 }
 
-static U64 North(const U64 bb) {
+inline static U64 North(const U64 bb) {
 	return bb << 8;
 }
 
-static U64 South(const U64 bb) {
+inline static U64 South(const U64 bb) {
 	return bb >> 8;
 }
 
-static U64 NW(const U64 bb) {
+inline static U64 NW(const U64 bb) {
 	return North(West(bb));
 }
 
-static U64 NE(const U64 bb) {
+inline static U64 NE(const U64 bb) {
 	return North(East(bb));
 }
 
-static U64 SW(const U64 bb) {
+inline static U64 SW(const U64 bb) {
 	return South(West(bb));
 }
 
-static U64 SE(const U64 bb) {
+inline static U64 SE(const U64 bb) {
 	return South(East(bb));
 }
 
@@ -415,10 +419,6 @@ static Move UciToMove(char* s, int flip) {
 	return m;
 }
 
-static int Center(int rank, int file) {
-	return -abs(rank * 2 - 7) / 2 - abs(file * 2 - 7) / 2;
-}
-
 static int CenterSq(int sq) {
 	int rank = sq / 8;
 	int file = sq % 8;
@@ -519,8 +519,7 @@ static int SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, S
 				else
 					printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
 				printf(" time %lld", GetTimeMs() - info.timeStart);
-				printf(" nodes %lld pv %s", info.nodes, MoveToUci(stack[0].move, pos->flipped));
-				printf("\n");
+				printf(" nodes %lld pv %s\n", info.nodes, MoveToUci(stack[0].move, pos->flipped));
 			}
 			if (alpha >= beta)
 				break;

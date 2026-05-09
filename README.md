@@ -4,7 +4,7 @@
 <img src="/Resources/Crab.png" />
     <br>
     <br>
-    <b><i>Uci chess engine 1600 elo.</i></b>
+    <b><i>Uci chess engine 1900 elo.</i></b>
     <br>
     <br>
     <img src="https://img.shields.io/github/downloads/Thibor/Crab/total?color=critical&style=for-the-badge">
@@ -18,7 +18,9 @@ FIDE-rules-compliant chess engine
 
 ## Features
 
-- Single file
+- Elo 1900
+- Protocol UCI
+- Single C file 
 - Board: bitboard
 - En passant
 - Underpromotions (knight, bishop, rook)
