@@ -21,7 +21,7 @@ FIDE-rules-compliant chess engine
 - Elo 1900
 - Protocol UCI
 - Single C file 
-- Board: bitboard
+- Board bitboard
 - En passant
 - Underpromotions (knight, bishop, rook)
 - Stalemate and checkmate reported correctly to the GUI
