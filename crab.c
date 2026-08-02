@@ -496,43 +496,21 @@ static Move UciToMove(char* s, int flip) {
 	return m;
 }
 
-static int EvalPosition2(Position* pos) {
-	int score = 0;
-	int insufficient[2] = { 0 };
-	U64 bbBlockers = pos->color[0] | pos->color[1];
-	for (int c = WHITE; c < COLOR_NB; c++) {
-		for (int pt = PAWN; pt < KING; ++pt) {
-			int count = Count(pos->color[c] & pos->pieces[pt]);
-			score += material[pt] * count;
-			insufficient[c] += insufVal[pt] * count;
+static void PrintBitboard(U64 bb) {
+	const char* s = "   +---+---+---+---+---+---+---+---+\n";
+	const char* t = "     A   B   C   D   E   F   G   H\n";
+	printf(t);
+	for (int r = 7; r >= 0; r--) {
+		printf(s);
+		printf(" %d |", r + 1);
+		for (int f = 0; f < 8; f++) {
+			int sq = r * 8 + f;
+			printf(" %c |", bb & 1ull << sq ? 'x' : ' ');
 		}
-		U64 bbStart1 = pos->color[1] & pos->pieces[PAWN];
-		U64 bbControl1 = SW(bbStart1) | SE(bbStart1);
-		score -= Count(bbControl1);
-		U64 bbStart0 = pos->color[0] & pos->pieces[KNIGHT];
-		U64 bbAttack0 = KnightAttackBB(bbStart0) & ~bbControl1;
-		score += Count(bbAttack0);
-		bbStart0 = pos->color[0] & (pos->pieces[BISHOP] | pos->pieces[QUEEN]);
-		bbAttack0 = BishopAttackBB(bbStart0, bbBlockers) & ~bbControl1;
-		score += Count(bbAttack0);
-		bbStart0 = pos->color[0] & (pos->pieces[ROOK] | pos->pieces[QUEEN]);
-		bbAttack0 = RookAttackBB(bbStart0, bbBlockers) & ~bbControl1;
-		score += Count(bbAttack0);
-		bbStart0 = pos->color[0] & pos->pieces[KING];
-		U64 file0 = bbFiles[LSB(bbStart0) % 8];
-		file0 |= East(file0) | West(file0);
-		bbAttack0 = file0 & (bbRanks[1] | bbRanks[2]) & ~(bbFiles[3] | bbFiles[4]);
-		bbAttack0 &= (pos->color[0] & pos->pieces[PAWN]);
-		score += Count(bbAttack0);
-		score += Count(bbAttack0 & bbRanks[1]);
-		FlipPosition(pos);
-		score = -score;
+		printf(" %d \n", r + 1);
 	}
-	if (max(insufficient[0], insufficient[1]) < 5)
-		return 0;
-	if (insufficient[score < 0] < 4)
-		return 0;
-	return (100 - pos->move50) * score / 100;
+	printf(s);
+	printf(t);
 }
 
 static int EvalPosition(Position* pos) {
@@ -567,8 +545,8 @@ static int EvalPosition(Position* pos) {
 	U64 bbControlB = bbControl[BLACK][0] & ~bbControl[WHITE][0];
 	bbControlW |= (bbControl[WHITE][1] & ~bbControl[BLACK][1] & ~bbControl[BLACK][0]);
 	bbControlB |= (bbControl[BLACK][1] & ~bbControl[WHITE][1] & ~bbControl[WHITE][0]);
-	bbControlW |= (bbControl[WHITE][2] & ~bbControl[BLACK][2] & ~bbControl[BLACK][1] && ~bbControl[BLACK][0]);
-	bbControlB |= (bbControl[BLACK][2] & ~bbControl[WHITE][2] & ~bbControl[WHITE][1] && ~bbControl[WHITE][0]);
+	bbControlW |= (bbControl[WHITE][2] & ~bbControl[BLACK][2] & ~bbControl[BLACK][1] & ~bbControl[BLACK][0]);
+	bbControlB |= (bbControl[BLACK][2] & ~bbControl[WHITE][2] & ~bbControl[WHITE][1] & ~bbControl[WHITE][0]);
 	score += Count(bbControlW) - Count(bbControlB);
 	if (max(insufficient[0], insufficient[1]) < 5)
 		return 0;
