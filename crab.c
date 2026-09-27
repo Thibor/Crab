@@ -650,10 +650,10 @@ static int EvalPosition(Position* pos) {
 		scoreMg = -scoreMg;
 		scoreEg = -scoreEg;
 	}
+	phase = min(phase, 24);
+	score += (scoreMg * phase + scoreEg * (24 - phase)) / 24;
 	if (max(insufficient[0], insufficient[1]) < 5)return 0;
 	if (insufficient[score < 0] < 4)return 0;
-	if (phase > 24) phase = 24;
-	score += (scoreMg * phase + scoreEg * (24 - phase)) / 24;
 	return (100 - pos->move50) * score / 100;
 }
 
@@ -742,6 +742,7 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 		if (alpha >= beta)
 			return beta;
 	}
+
 	if (!inQuiescence && !inPv && !inCheck && ply && beta < MATE - MAX_PLY) {
 		// REVERSE FUTILITY PRUNING
 		if (depth < 8 && staticEval - 70 * depth >= beta)
@@ -772,7 +773,7 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 	for (int j = 0; j < movesCount; ++j) {
 		Move m = movesList[j];
 		const int ptSou = PieceTypeOnSquare(pos, m.from);
-		int ptDes = m.promo == PT_NB ? PieceTypeOnSquare(pos, m.to) : m.promo;
+		const int ptDes = m.promo == PT_NB ? PieceTypeOnSquare(pos, m.to) : m.promo;
 		if (Equal(m, ttMove))
 			scoreList[j] = 1LL << 62;
 		else if (ptDes != PT_NB)
@@ -1017,19 +1018,19 @@ static void ParseGo(Position* pos, char* command) {
 	int binc = 0;
 	int movestogo = 32;
 	char* argument = NULL;
-	if (argument = strstr(command, "binc"))
-		binc = atoi(argument + 5);
-	if (argument = strstr(command, "winc"))
-		winc = atoi(argument + 5);
 	if (argument = strstr(command, "wtime"))
 		wtime = max(1, atoi(argument + 6));
 	if (argument = strstr(command, "btime"))
 		btime = max(1, atoi(argument + 6));
+	if (argument = strstr(command, "binc"))
+		binc = atoi(argument + 5);
+	if (argument = strstr(command, "winc"))
+		winc = atoi(argument + 5);
 	if ((argument = strstr(command, "movestogo")))
 		movestogo = atoi(argument + 10);
-	if ((argument = strstr(command, "movetime")))
+	if (argument = strstr(command, "movetime"))
 		info.timeLimit = atoi(argument + 9);
-	if ((argument = strstr(command, "depth")))
+	if (argument = strstr(command, "depth"))
 		info.depthLimit = atoi(argument + 6);
 	if (argument = strstr(command, "nodes"))
 		info.nodesLimit = atoi(argument + 5);
