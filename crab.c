@@ -22,7 +22,22 @@
 #define NAME "Crab"
 #define VERSION "2026-08-02"
 #define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-
+#define RANK_1_BB       (U64)0x00000000000000FF
+#define RANK_2_BB       (U64)0x000000000000FF00
+#define RANK_3_BB       (U64)0x0000000000FF0000
+#define RANK_4_BB       (U64)0x00000000FF000000
+#define RANK_5_BB       (U64)0x000000FF00000000
+#define RANK_6_BB       (U64)0x0000FF0000000000
+#define RANK_7_BB       (U64)0x00FF000000000000
+#define RANK_8_BB       (U64)0xFF00000000000000
+#define FILE_A_BB       (U64)0x0101010101010101
+#define FILE_B_BB       (U64)0x0202020202020202
+#define FILE_C_BB       (U64)0x0404040404040404
+#define FILE_D_BB       (U64)0x0808080808080808
+#define FILE_E_BB       (U64)0x1010101010101010
+#define FILE_F_BB       (U64)0x2020202020202020
+#define FILE_G_BB       (U64)0x4040404040404040
+#define FILE_H_BB       (U64)0x8080808080808080
 
 enum { FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H };
 enum { RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8 };
@@ -69,35 +84,6 @@ typedef struct {
 	U64 nodesLimit;
 }SearchInfo;
 
-static const U64 FILE_ABB = 0x0101010101010101ULL;
-static const U64 FILE_BBB = 0x0202020202020202ULL;
-static const U64 FILE_CBB = 0x0404040404040404ULL;
-static const U64 FILE_DBB = 0x0808080808080808ULL;
-static const U64 FILE_EBB = 0x1010101010101010ULL;
-static const U64 FILE_FBB = 0x2020202020202020ULL;
-static const U64 FILE_GBB = 0x4040404040404040ULL;
-static const U64 FILE_HBB = 0x8080808080808080ULL;
-
-U64 bbRanks[8] = {
-	0x00000000000000ffULL,
-	0x000000000000ff00ULL,
-	0x0000000000ff0000ULL,
-	0x00000000ff000000ULL,
-	0x000000ff00000000ULL,
-	0x0000ff0000000000ULL,
-	0x00ff000000000000ULL,
-	0xff00000000000000ULL };
-
-U64 bbFiles[8] = {
-	0x0101010101010101ULL,
-	0x0202020202020202ULL,
-	0x0404040404040404ULL,
-	0x0808080808080808ULL,
-	0x1010101010101010ULL,
-	0x2020202020202020ULL,
-	0x4040404040404040ULL,
-	0x8080808080808080ULL };
-
 int mg_material[PT_NB] = { 82, 337, 365, 477, 1025, 0 };
 int eg_material[PT_NB] = { 94, 281, 297, 512,  936, 0 };
 int mx_material[PT_NB] = { 94, 337, 365, 512, 1025, 0 };
@@ -126,14 +112,14 @@ static inline U64 GetTimeMs() { return GetTickCount64(); }
 static inline U64 FlipBitboard(const U64 bb) { return _byteswap_uint64(bb); }
 static inline U64 LSB(const U64 bb) { return _tzcnt_u64(bb); }
 static inline U64 Count(const U64 bb) { return _mm_popcnt_u64(bb); }
-static inline U64 East(const U64 bb) { return (bb << 1) & ~FILE_ABB; }
-static inline U64 West(const U64 bb) { return (bb >> 1) & ~FILE_HBB; }
+static inline U64 East(const U64 bb) { return (bb << 1) & ~FILE_A_BB; }
+static inline U64 West(const U64 bb) { return (bb >> 1) & ~FILE_H_BB; }
 static inline U64 North(const U64 bb) { return bb << 8; }
 static inline U64 South(const U64 bb) { return bb >> 8; }
-static inline U64 NW(const U64 bb) { return (bb << 7) & ~FILE_HBB; }
-static inline U64 NE(const U64 bb) { return (bb << 9) & ~FILE_ABB; }
-static inline U64 SW(const U64 bb) { return (bb >> 9) & ~FILE_HBB; }
-static inline U64 SE(const U64 bb) { return (bb >> 7) & ~FILE_ABB; }
+static inline U64 NW(const U64 bb) { return (bb << 7) & ~FILE_H_BB; }
+static inline U64 NE(const U64 bb) { return (bb << 9) & ~FILE_A_BB; }
+static inline U64 SW(const U64 bb) { return (bb >> 9) & ~FILE_H_BB; }
+static inline U64 SE(const U64 bb) { return (bb >> 7) & ~FILE_A_BB; }
 static inline int FileOf(int sq) { return sq % 8; }
 static inline int RankOf(int sq) { return sq / 8; }
 static inline int Center(int rank, int file) { return -abs(rank * 2 - 7) / 2 - abs(file * 2 - 7) / 2; }
@@ -639,12 +625,12 @@ static int EvalPosition(Position* pos) {
 			}
 		}
 		U64 bbStart0 = pos->color[0] & pos->pieces[KING];
-		U64 file0 = bbFiles[FileOf(LSB(bbStart0))];
+		U64 file0 = FILE_A_BB << FileOf(LSB(bbStart0));
 		file0 |= East(file0) | West(file0);
-		U64 bbAttack0 = file0 & (bbRanks[RANK_2] | bbRanks[RANK_3]) & ~(FILE_DBB | FILE_EBB);
+		U64 bbAttack0 = file0 & ~(FILE_D_BB | FILE_E_BB);
 		bbAttack0 &= (pos->color[0] & pos->pieces[PAWN]);
-		scoreMg += Count(bbAttack0) * 10;
-		scoreMg += Count(bbAttack0 & bbRanks[RANK_2]) * 10;
+		scoreMg += Count(bbAttack0 & RANK_2_BB) * 16;
+		scoreMg += Count(bbAttack0 & RANK_3_BB) * 8;
 		FlipPosition(pos);
 		score = -score;
 		scoreMg = -scoreMg;
