@@ -22,25 +22,25 @@
 #define NAME "Crab"
 #define VERSION "2026-08-02"
 #define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-#define RANK_1_BB       (U64)0x00000000000000FF
-#define RANK_2_BB       (U64)0x000000000000FF00
-#define RANK_3_BB       (U64)0x0000000000FF0000
-#define RANK_4_BB       (U64)0x00000000FF000000
-#define RANK_5_BB       (U64)0x000000FF00000000
-#define RANK_6_BB       (U64)0x0000FF0000000000
-#define RANK_7_BB       (U64)0x00FF000000000000
-#define RANK_8_BB       (U64)0xFF00000000000000
-#define FILE_A_BB       (U64)0x0101010101010101
-#define FILE_B_BB       (U64)0x0202020202020202
-#define FILE_C_BB       (U64)0x0404040404040404
-#define FILE_D_BB       (U64)0x0808080808080808
-#define FILE_E_BB       (U64)0x1010101010101010
-#define FILE_F_BB       (U64)0x2020202020202020
-#define FILE_G_BB       (U64)0x4040404040404040
-#define FILE_H_BB       (U64)0x8080808080808080
+#define RANK_1_BB 0x00000000000000FFULL
+#define RANK_2_BB 0x000000000000FF00ULL
+#define RANK_3_BB 0x0000000000FF0000ULL
+#define RANK_4_BB 0x00000000FF000000ULL
+#define RANK_5_BB 0x000000FF00000000ULL
+#define RANK_6_BB 0x0000FF0000000000ULL
+#define RANK_7_BB 0x00FF000000000000ULL
+#define RANK_8_BB 0xFF00000000000000ULL
+#define FILE_A_BB 0x0101010101010101ULL
+#define FILE_B_BB 0x0202020202020202ULL
+#define FILE_C_BB 0x0404040404040404ULL
+#define FILE_D_BB 0x0808080808080808ULL
+#define FILE_E_BB 0x1010101010101010ULL
+#define FILE_F_BB 0x2020202020202020ULL
+#define FILE_G_BB 0x4040404040404040ULL
+#define FILE_H_BB 0x8080808080808080ULL
 
-enum { FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H };
-enum { RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8 };
+enum File { FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H };
+enum Rank { RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8 };
 enum Color { WHITE, BLACK, COLOR_NB };
 enum PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, PT_NB };
 enum Bound { UPPER, LOWER, EXACT };
@@ -340,7 +340,7 @@ static void GeneratePieceMoves(Move* const moveList, int* num_moves, const Posit
 	}
 }
 
-static int MoveGen(const Position* pos, Move* const moveList, int only_captures) {
+static int GenerateMoves(const Position* pos, Move* const moveList, int only_captures) {
 	int num_moves = 0;
 	const U64 all = pos->color[0] | pos->color[1];
 	const U64 to_mask = only_captures ? pos->color[1] : ~pos->color[0];
@@ -645,7 +645,7 @@ static int EvalPosition(Position* pos) {
 
 static int IsPseudolegalMove(const Position* pos, const Move move) {
 	Move moves[256];
-	const int num_moves = MoveGen(pos, moves, 0);
+	const int num_moves = GenerateMoves(pos, moves, 0);
 	for (int i = 0; i < num_moves; ++i)
 		if (moves[i].from == move.from && moves[i].to == move.to)
 			return 1;
@@ -754,7 +754,7 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 	Move movesList[256];
 	int quietMoves = 0;
 	Move qList[256];
-	const int movesCount = MoveGen(pos, movesList, inQuiescence);
+	const int movesCount = GenerateMoves(pos, movesList, inQuiescence);
 	S64 scoreList[256];
 	for (int j = 0; j < movesCount; ++j) {
 		Move m = movesList[j];
@@ -832,7 +832,7 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 	historyCount--;
 	if (info.stop)
 		return 0;
-	if (!legalMoves && !inQuiescence)
+	if (!legalMoves)
 		return inQuiescence ? alpha : inCheck ? ply - MATE : 0;
 	tt_entry->hash = hash;
 	tt_entry->move = ss[ply].move;
@@ -892,7 +892,7 @@ static void ResetInfo() {
 
 static inline void PerftDriver(Position* pos, int depth) {
 	Move moves[256];
-	const int num_moves = MoveGen(pos, moves, 0);
+	const int num_moves = GenerateMoves(pos, moves, 0);
 	for (int n = 0; n < num_moves; n++) {
 		Position npos = *pos;
 		if (!MakeMove(&npos, &moves[n]))
