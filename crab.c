@@ -620,7 +620,7 @@ static int EvalPosition(Position* pos) {
 				insufficient[c] += insufVal[pt];
 				if (pt > PAWN && pt < KING) {
 					U64 bbAttack = Attacks(pt, fr, bbBlockers);
-					score += Count(bbAttack & ~bbControl1);
+					score += Count(bbAttack & ~bbControl1 & ~pos->color[WHITE]);
 				}
 			}
 		}
@@ -710,15 +710,15 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 	if (ply && !inQuiescence)
 		if (pos->move50 >= 100 || IsRepetition(pos, hash))
 			return 0;
-	TTEntry* tt_entry = tt + (hash % tt_count);
+	TTEntry* ttEntry = tt + (hash % tt_count);
 	Move ttMove = { 0 };
 	int inPv = beta - alpha > 1;
-	if (tt_entry->hash == hash) {
-		ttMove = tt_entry->move;
-		if (!inPv && tt_entry->depth >= depth) {
-			if (tt_entry->flag == EXACT)return tt_entry->score;
-			if (tt_entry->flag == LOWER && tt_entry->score <= alpha)return tt_entry->score;
-			if (tt_entry->flag == UPPER && tt_entry->score >= beta)return tt_entry->score;
+	if (ttEntry->hash == hash) {
+		ttMove = ttEntry->move;
+		if (!inPv && ttEntry->depth >= depth) {
+			if (ttEntry->flag == EXACT)return ttEntry->score;
+			if (ttEntry->flag == LOWER && ttEntry->score <= alpha)return ttEntry->score;
+			if (ttEntry->flag == UPPER && ttEntry->score >= beta)return ttEntry->score;
 		}
 	}
 	else
@@ -737,12 +737,12 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 		if (depth <= 3 && staticEval + 300 + 60 * depth < alpha)
 			depth--;
 		// NULL MOVE PRUNING
-		if (depth > 2 && staticEval >= beta && doNull && (pos->color[0] & (pos->pieces[KNIGHT] | pos->pieces[BISHOP] | pos->pieces[ROOK] | pos->pieces[QUEEN]))) {
+		if (depth > 2 && staticEval >= beta && doNull && pos->color[0] & ~pos->pieces[PAWN] & ~pos->pieces[KING]) {
 			Position npos = *pos;
 			FlipPosition(&npos);
 			npos.ep = 0x0ULL;
-			int R = depth >= 7 ? 4 : 3;
-			int score = -SearchAlpha(&npos, -beta, -beta + 1, depth - R - 1, ply + 1, 0);
+			int r = depth >= 7 ? 4 : 3;
+			int score = -SearchAlpha(&npos, -beta, -beta + 1, depth - r - 1, ply + 1, 0);
 			if (score >= beta)
 				return score;
 		}
@@ -834,11 +834,11 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 		return 0;
 	if (!legalMoves)
 		return inQuiescence ? alpha : inCheck ? ply - MATE : 0;
-	tt_entry->hash = hash;
-	tt_entry->move = ss[ply].move;
-	tt_entry->depth = max(0, depth);
-	tt_entry->score = alpha;
-	tt_entry->flag = tt_flag;
+	ttEntry->hash = hash;
+	ttEntry->move = ss[ply].move;
+	ttEntry->depth = max(0, depth);
+	ttEntry->score = alpha;
+	ttEntry->flag = tt_flag;
 	return alpha;
 }
 
@@ -988,10 +988,10 @@ static void ParsePosition(Position* pos, char* ptr) {
 			if (*token == '\0')
 				break;
 			Move m = UciToMove(token, pos->flipped);
-			if (PieceTypeOnSquare(pos, m.to) != PT_NB || PieceTypeOnSquare(pos, m.from) == PAWN)
-				historyCount = 0;
 			historyHash[historyCount++] = GetHash(pos);
 			MakeMove(pos, &m);
+			if(!pos->move50)
+				historyCount = 0;
 		}
 	}
 }
