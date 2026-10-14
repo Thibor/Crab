@@ -10,6 +10,7 @@
 #define MAX_PLY 64
 #define MATE 32000
 #define INF 32001
+#define TTCOUNT (1ULL << 21)
 #define S8 signed __int8
 #define U8 unsigned __int8
 #define S16 signed __int16
@@ -54,10 +55,14 @@ typedef struct {
 	U64 ep;
 }Position;
 
-typedef struct {
-	U8 from;
-	U8 to;
-	U8 promo;
+typedef union {
+	U16 move;
+	struct {
+		U8 from;
+		U8 to;
+		U8 promo;
+		U8 flags;
+	};
 }Move;
 
 typedef struct {
@@ -92,16 +97,16 @@ int phaseVal[PT_NB] = { 0,1,1,2,4,0 };
 int historyCount = 0;
 U64 keys[848];
 U64 historyHash[1024];
-const U64 tt_count = 64ULL << 15;
 U64 bbSquare[64];
 U64 bbKnightAttack[64];
 U64 bbKingAttack[64];
 int hh[2][64][64];
 int mg_pst[PT_NB][64];
 int eg_pst[PT_NB][64];
+U64 ttMask = TTCOUNT - 1;
 SearchInfo info;
 Stack ss[128];
-TTEntry tt[64ULL << 15];
+TTEntry tt[TTCOUNT];
 
 void UciCommand(Position* pos, char* line);
 
@@ -124,7 +129,6 @@ static inline int FileOf(int sq) { return sq % 8; }
 static inline int RankOf(int sq) { return sq / 8; }
 static inline int Center(int rank, int file) { return -abs(rank * 2 - 7) / 2 - abs(file * 2 - 7) / 2; }
 static inline int CenterSq(int sq) { return Center(RankOf(sq), FileOf(sq)); }
-static inline int Equal(const Move lhs, const Move rhs) { return !memcmp(&rhs, &lhs, sizeof(Move)); }
 
 static void Swap(U64* a, U64* b) {
 	U64 temp = *a;
@@ -660,7 +664,7 @@ static void PrintPv(const Position* pos, const Move move) {
 		return;
 	printf(" %s", MoveToUci(move, pos->flipped));
 	const U64 hash = GetHash(&npos);
-	TTEntry* tt_entry = tt + (hash % tt_count);
+	TTEntry* tt_entry = tt + (hash & ttMask);
 	if (tt_entry->hash != hash || IsRepetition(&npos, hash))
 		return;
 	historyHash[historyCount++] = hash;
@@ -710,7 +714,7 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 	if (ply && !inQuiescence)
 		if (pos->move50 >= 100 || IsRepetition(pos, hash))
 			return 0;
-	TTEntry* ttEntry = tt + (hash % tt_count);
+	TTEntry* ttEntry = tt + (hash & ttMask);
 	Move ttMove = { 0 };
 	int inPv = beta - alpha > 1;
 	if (ttEntry->hash == hash) {
@@ -760,13 +764,13 @@ static S16 SearchAlpha(Position* pos, int alpha, int beta, int depth, int ply, i
 		Move m = movesList[j];
 		const int ptSou = PieceTypeOnSquare(pos, m.from);
 		const int ptDes = m.promo == PT_NB ? PieceTypeOnSquare(pos, m.to) : m.promo;
-		if (Equal(m, ttMove))
+		if (m.move == ttMove.move)
 			scoreList[j] = 1LL << 62;
 		else if (ptDes != PT_NB)
 			scoreList[j] = ((ptDes + 1) * (1LL << 54)) - ptSou;
-		else if (Equal(m, ss[ply].killer1))
+		else if (m.move == ss[ply].killer1.move)
 			scoreList[j] = 1LL << 50;
-		else if (Equal(m, ss[ply].killer2))
+		else if (m.move == ss[ply].killer2.move)
 			scoreList[j] = 1LL << 48;
 		else
 			scoreList[j] = hh[pos->flipped][m.from][m.to];
@@ -939,7 +943,7 @@ static void UciPerformance(Position* pos) {
 	PrintPerformanceHeader();
 	info.depthLimit = 0;
 	U64 elapsed = 0;
-	while (elapsed < 3000) {
+	while (elapsed < 4000) {
 		PerftDriver(pos, info.depthLimit++);
 		elapsed = GetTimeMs() - info.timeStart;
 		printf(" %2d. %8llu %12llu\n", info.depthLimit, elapsed, info.nodes);
@@ -954,7 +958,7 @@ static void UciBench(Position* pos) {
 	info.depthLimit = 0;
 	info.post = FALSE;
 	U64 elapsed = 0;
-	while (elapsed < 3000) {
+	while (elapsed < 8000) {
 		++info.depthLimit;
 		SearchIteratively(pos);
 		elapsed = GetTimeMs() - info.timeStart;
@@ -990,7 +994,7 @@ static void ParsePosition(Position* pos, char* ptr) {
 			Move m = UciToMove(token, pos->flipped);
 			historyHash[historyCount++] = GetHash(pos);
 			MakeMove(pos, &m);
-			if(!pos->move50)
+			if (!pos->move50)
 				historyCount = 0;
 		}
 	}
